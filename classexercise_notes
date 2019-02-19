@@ -1,0 +1,95 @@
+# Dependencies
+import pandas as pd
+import numpy as np
+import requests
+import json
+
+# Google API Key
+from config import gkey
+
+# Import cities file as DataFrame
+cities_pd = pd.read_csv("../Resources/cities.csv")
+cities_pd.head()
+
+
+# Add columns for lat, lng, airport name, airport address, airport rating
+# Note that we used "" to specify initial entry.
+cities_pd["Lat"] = ""
+cities_pd["Lng"] = ""
+cities_pd["Airport Name"] = ""
+cities_pd["Airport Address"] = ""
+cities_pd["Airport Rating"] = ""
+cities_pd.head()
+
+
+# create a params dict that will be updated with new city each iteration
+params = {"key": gkey}
+
+# Loop through the cities_pd and run a lat/long search for each city
+for index, row in cities_pd.iterrows():
+    base_url = "https://maps.googleapis.com/maps/api/geocode/json"
+
+    city = row['City']
+    state = row['State']
+
+    # update address key value
+    params['address'] = f"{city},{state}"
+
+    # make request
+    cities_lat_lng = requests.get(base_url, params=params)
+    
+    # print the cities_lat_lng url, avoid doing for public github repos in order to avoid exposing key
+    # print(cities_lat_lng.url)
+    
+    # convert to json
+    cities_lat_lng = cities_lat_lng.json()
+
+    cities_pd.loc[index, "Lat"] = cities_lat_lng["results"][0]["geometry"]["location"]["lat"]
+    cities_pd.loc[index, "Lng"] = cities_lat_lng["results"][0]["geometry"]["location"]["lng"]
+
+# Visualize to confirm lat lng appear
+cities_pd.head()
+
+# params dictionary to update each iteration
+params = {
+    "radius": 50000,
+    "types": "airport",
+    "keyword": "international airport",
+    "key": gkey
+}
+
+# Use the lat/lng we recovered to identify airports
+for index, row in cities_pd.iterrows():
+    # get lat, lng from df
+    lat = row["Lat"]
+    lng = row["Lng"]
+
+    # change location each iteration while leaving original params in place
+    params["location"] = f"{lat},{lng}"
+
+    # Use the search term: "International Airport" and our lat/lng
+    base_url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+
+    # make request and print url
+    name_address = requests.get(base_url, params=params)
+    
+#     print the name_address url, avoid doing for public github repos in order to avoid exposing key
+#     print(name_address.url)
+
+    # convert to json
+    name_address = name_address.json()
+    # print(json.dumps(name_address, indent=4, sort_keys=True))
+
+    # Since some data may be missing we incorporate a try-except to skip any that are missing a data point.
+    try:
+        cities_pd.loc[index, "Airport Name"] = name_address["results"][0]["name"]
+        cities_pd.loc[index, "Airport Address"] = name_address["results"][0]["vicinity"]
+        cities_pd.loc[index, "Airport Rating"] = name_address["results"][0]["rating"]
+    except (KeyError, IndexError):
+        print("Missing field/result... skipping.")
+
+        # Save Data to csv
+cities_pd.to_csv("Airport_Output.csv")
+
+# Visualize to confirm airport data appears
+cities_pd.head(10)
